@@ -800,6 +800,8 @@ const _h3 = (() => {
   const oc=document.createElement('canvas'); oc.width=OW; oc.height=OH;
   const ren=new THREE.WebGLRenderer({canvas:oc,antialias:true,alpha:true});
   ren.setSize(OW,OH); ren.setClearColor(0x000000,0);
+  const sil=document.createElement('canvas'); sil.width=OW; sil.height=OH;
+  const sctx=sil.getContext('2d');
   ren.toneMapping=THREE.ACESFilmicToneMapping; ren.toneMappingExposure=1.1;
   const sc=new THREE.Scene();
   const cam=new THREE.PerspectiveCamera(40,OW/OH,0.01,100);
@@ -899,9 +901,18 @@ const _h3 = (() => {
     else aIdle(t);
     root.rotation.y = state==='sleep' ? P/4 : (angle || 0);
     ren.render(sc,cam);
-    ctx.filter='drop-shadow(0 2px 0 #000) drop-shadow(0 -2px 0 #000) drop-shadow(2px 0 0 #000) drop-shadow(-2px 0 0 #000)';
-    ctx.drawImage(oc, Math.round(cx-30), Math.round(cy-35), 60, 78);
-    ctx.filter='none';
+    sctx.clearRect(0,0,OW,OH);
+    sctx.drawImage(oc,0,0);
+    sctx.globalCompositeOperation='source-in';
+    sctx.fillStyle='#000';
+    sctx.fillRect(0,0,OW,OH);
+    sctx.globalCompositeOperation='source-over';
+    const dx=Math.round(cx-30), dy=Math.round(cy-35);
+    ctx.drawImage(sil, dx,   dy-2, 60, 78);
+    ctx.drawImage(sil, dx,   dy+2, 60, 78);
+    ctx.drawImage(sil, dx-2, dy,   60, 78);
+    ctx.drawImage(sil, dx+2, dy,   60, 78);
+    ctx.drawImage(oc,  dx,   dy,   60, 78);
   }
   return {draw};
 })();
@@ -2819,17 +2830,18 @@ async function syncToServer(gs){
   if(t!==_syncTimer) return;
   const name=GameState.getGlobalName()||'玩家';
   const did=getDeviceId();
-  const body={device_id:did,player_name:name,total_earned:Math.round(gs.totalEarned),money:Math.round(gs.money),prestige_count:gs.prestigeCount,last_seen:new Date().toISOString()};
+  const slot=gs.slot||1;
+  const body={device_id:did,slot:slot,player_name:name,total_earned:Math.round(gs.totalEarned),money:Math.round(gs.money),prestige_count:gs.prestigeCount,last_seen:new Date().toISOString()};
   try{
     // 先試 upsert
-    const r=await fetch(`${SB_URL}/rest/v1/players?on_conflict=device_id`,{
+    const r=await fetch(`${SB_URL}/rest/v1/players?on_conflict=device_id,slot`,{
       method:'POST',
       headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
       body:JSON.stringify(body)
     });
     if(!r.ok){
       // 改用 PATCH 更新
-      await fetch(`${SB_URL}/rest/v1/players?device_id=eq.${encodeURIComponent(did)}`,{
+      await fetch(`${SB_URL}/rest/v1/players?device_id=eq.${encodeURIComponent(did)}&slot=eq.${slot}`,{
         method:'PATCH',
         headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
         body:JSON.stringify({player_name:name,total_earned:Math.round(gs.totalEarned),money:Math.round(gs.money),prestige_count:gs.prestigeCount,last_seen:new Date().toISOString()})
